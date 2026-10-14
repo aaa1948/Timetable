@@ -1,7 +1,4 @@
-// Set to your deployed Node server's HTTPS origin to enable shared storage on Pages.
-// Example: export const API_BASE = 'https://your-server.example.com';
+// Browser-safe public connection settings. Never use a secret/service_role key.
 export const API_BASE = '';
-// Browser-safe publishable key (sb_publishable_...) or legacy anon key only.
-// Never put a secret/service_role key here.
-export const SUPABASE_URL = '';
-export const SUPABASE_KEY = '';
+export const SUPABASE_URL = 'https://jfvsbkioaalgkzssqjtu.supabase.co';
+export const SUPABASE_KEY = 'sb_publishable_CAfHogfS-eqnumt4QQWsBw_WiqlINSe';
