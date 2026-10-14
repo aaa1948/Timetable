@@ -1,9 +1,11 @@
-import { days, time, conflicts, availableRanges } from './schedule.js';
+import { days, time, conflicts, availableRanges, selectedRanges } from './schedule.js';
 import { API_BASE, SUPABASE_URL, SUPABASE_KEY } from './config.js';
 import { createCloudClient } from './cloud.js';
 const $ = id => document.getElementById(id);
 const escape = value => String(value).replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
 let code = new URLSearchParams(location.hash.slice(1)).get('room') || '', room, busy = false, loading = false, selectedSlot;
+const chosenSlots = new Set();
+let editingLocation = null, removePhoto = false;
 const apiBase = API_BASE.replace(/\/$/, '');
 const cloud = SUPABASE_URL && SUPABASE_KEY ? createCloudClient(SUPABASE_URL, SUPABASE_KEY) : null;
 const needsServer = location.hostname.endsWith('.github.io') && !apiBase && !cloud;
@@ -43,9 +45,29 @@ for (const page of ['schedule', 'locations']) $('tab-' + page).addEventListener(
 });
 $('members-form').addEventListener('submit', async event => { event.preventDefault(); if (await mutate({action:'members', names:[...$('name-inputs').querySelectorAll('input')].map(i => i.value)})) $('name-inputs').querySelectorAll('input').forEach(i => i.value = ''); });
 $('block-form').addEventListener('submit', async event => {
-  event.preventDefault(); if (+$('start').value >= +$('end').value) return message('종료 시간은 시작 시간보다 늦어야 합니다. 자정을 넘는 일정은 요일별로 나눠 입력해 주세요.', true);
-  if (await mutate({ action:'block', memberId:$('person').value, day:+$('day').value, start:+$('start').value, end:+$('end').value, reason:$('reason').value })) $('reason').value = '';
+  event.preventDefault();
+  if (busy) return;
+  const ranges = selectedRanges(chosenSlots);
+  if (!ranges.length) {
+    if ($('multi-select').checked) return message('시간표에서 저장할 칸을 선택해 주세요.', true);
+    if (+$('start').value >= +$('end').value) return message('종료 시간은 시작 시간보다 늦어야 합니다.', true);
+    ranges.push({day:+$('day').value, start:+$('start').value, end:+$('end').value});
+  }
+  event.submitter.disabled = true;
+  try {
+    if (await mutate({action:'blocks', memberId:$('person').value, ranges, reason:$('reason').value})) {
+      $('reason').value = ''; chosenSlots.clear(); renderSchedule();
+    }
+  } finally { event.submitter.disabled = false; }
 });
+$('add-range').addEventListener('click', () => {
+  if (busy) return;
+  if (+$('start').value >= +$('end').value) return message('종료 시간은 시작 시간보다 늦어야 합니다.', true);
+  for (let slot = +$('start').value; slot < +$('end').value; slot += 2) chosenSlots.add(`${$('day').value}:${slot}`);
+  $('multi-select').checked = true; renderSchedule();
+});
+$('multi-select').addEventListener('change', renderSchedule);
+$('clear-selection').addEventListener('click', () => { if (!busy) { chosenSlots.clear(); renderSchedule(); } });
 $('confirm-schedule').addEventListener('click', () => { const member = room.members.find(m => m.id === $('person').value); if (!member) return message('팀원을 먼저 등록해 주세요.', true); mutate({ action:'confirm', memberId:member.id, confirmed:!member.confirmed }); });
 $('person').addEventListener('change', renderConfirm); $('view').addEventListener('change', renderSchedule);
 function renderConfirm() { const m = room.members.find(m => m.id === $('person').value); $('confirm-schedule').textContent = m?.confirmed ? '입력 완료 해제 (수정 중)' : '선택한 팀원 일정 입력 완료'; }
@@ -68,11 +90,13 @@ function renderSchedule() {
       const blocks = conflicts(room.blocks, day, slot, filter), names = [...new Set(blocks.map(b => nameOf(b.memberId)))];
       const known = filter ? room.members.find(m => m.id === filter)?.confirmed : confirmed;
       const text = blocks.length ? names.join(', ') : known ? (filter ? '가능' : '모두 가능') : '확인 전';
-      html += `<td><button class="${blocks.length ? 'busy' : known ? '' : 'unknown'}" data-day="${day}" data-slot="${slot}" aria-label="${days[day]}요일 ${time(slot)} ${escape(text)}">${escape(text)}</button></td>`;
+      const chosen = chosenSlots.has(`${day}:${slot}`);
+      html += `<td><button class="${blocks.length ? 'busy' : known ? '' : 'unknown'}${chosen ? ' chosen' : ''}" data-day="${day}" data-slot="${slot}" ${$('multi-select').checked ? `aria-pressed="${chosen}"` : ''} aria-label="${days[day]}요일 ${time(slot)} ${escape(text)}${chosen ? ' 선택됨' : ''}">${chosen ? '✓ 선택' : escape(text)}</button></td>`;
     }
     html += '</tr>';
   }
   $('timetable').innerHTML = html + '</tbody>';
+  $('selection-summary').textContent = chosenSlots.size ? `${chosenSlots.size}시간 선택 · ` + selectedRanges(chosenSlots).map(r => `${days[r.day]} ${time(r.start)}–${time(r.end)}`).join(', ') : '선택한 시간 없음';
   $('available').innerHTML = !confirmed ? '<p class="hint">전원이 일정 입력을 완료하면 모두 가능한 시간대를 안내합니다.</p>' : days.map((d, day) => `<div class="range"><b>${d}</b><span>${availableRanges(room.blocks, day).map(([a,b]) => `${time(a)}–${time(b)}`).join('<br>') || '가능한 시간 없음'}</span></div>`).join('');
   const blocks = room.blocks.filter(b => !filter || b.memberId === filter).sort((a,b) => a.day - b.day || a.start - b.start);
   $('block-list').innerHTML = blocks.length ? blocks.map(b => `<div class="item"><div><strong>${escape(nameOf(b.memberId))}</strong> · ${days[b.day]} ${time(b.start)}–${time(b.end)}<p>${escape(b.reason)}</p></div><button class="delete" data-action="deleteBlock" data-id="${b.id}">삭제</button></div>`).join('') : '<p class="hint">아직 등록된 불가능한 일정이 없어요.</p>';
@@ -82,21 +106,52 @@ function showSlot(day, slot) {
   selectedSlot = [day, slot]; const blocks = conflicts(room.blocks, day, slot, $('view').value);
   $('slot-detail').innerHTML = `<strong>${days[day]}요일 ${time(slot)}–${time(slot+2)}</strong><br>` + (blocks.length ? blocks.map(b => `${escape(nameOf(b.memberId))} · ${escape(b.reason)}`).join('<br>') : '등록된 불가능한 일정이 없습니다. 입력 완료 여부도 확인해 주세요.');
 }
-$('timetable').addEventListener('click', event => { const button = event.target.closest('[data-slot]'); if (button) showSlot(+button.dataset.day, +button.dataset.slot); });
+$('timetable').addEventListener('click', event => {
+  const button = event.target.closest('[data-slot]'); if (!button) return;
+  if ($('multi-select').checked && !busy) {
+    const key = `${button.dataset.day}:${button.dataset.slot}`;
+    if (chosenSlots.has(key)) chosenSlots.delete(key); else chosenSlots.add(key);
+    renderSchedule();
+    $('timetable').querySelector(`[data-day="${button.dataset.day}"][data-slot="${button.dataset.slot}"]`)?.focus({preventScroll:true});
+  }
+  showSlot(+button.dataset.day, +button.dataset.slot);
+});
 document.addEventListener('click', event => { const button = event.target.closest('[data-action]'); if (!button) return; const warning = button.dataset.action === 'deleteMember' ? '이 팀원과 해당 팀원의 모든 일정을 삭제할까요?' : '이 항목을 삭제할까요?'; if (confirm(warning)) mutate({ action:button.dataset.action, id:button.dataset.id }); });
 async function readPhoto(file) {
   if (!file) return '';
   if (!['image/jpeg','image/png','image/webp'].includes(file.type) || file.size > 2 * 1024 * 1024) throw new Error('2MB 이하의 JPG, PNG, WebP 사진을 선택해 주세요.');
   return new Promise((resolve, reject) => { const reader = new FileReader(); reader.onload = () => resolve(reader.result); reader.onerror = () => reject(new Error('사진을 읽을 수 없습니다.')); reader.readAsDataURL(file); });
 }
-$('photo').addEventListener('change', async () => { try { const data = await readPhoto($('photo').files[0]); $('photo-preview').src = data; $('photo-preview').hidden = !data; } catch(error) { $('photo').value = ''; $('photo-preview').hidden = true; message(error.message, true); } });
+$('photo').addEventListener('change', async () => { try { const data = await readPhoto($('photo').files[0]); const existing = !removePhoto && room.locations.find(l => l.id === editingLocation)?.photo; $('photo-preview').src = data || existing || ''; $('photo-preview').hidden = !(data || existing); $('remove-photo').hidden = $('photo-preview').hidden; } catch(error) { $('photo').value = ''; message(error.message, true); } });
+function resetLocationForm() {
+  editingLocation = null; removePhoto = false; $('location-form').reset();
+  $('photo-preview').hidden = true; $('remove-photo').hidden = true; $('cancel-location').hidden = true;
+  $('location-form-title').textContent = '촬영 장소 추가'; $('save-location').textContent = '장소 저장 ↗';
+}
+$('cancel-location').addEventListener('click', () => { if (!busy) resetLocationForm(); });
+$('remove-photo').addEventListener('click', () => { removePhoto = true; $('photo').value = ''; $('photo-preview').hidden = true; $('remove-photo').hidden = true; });
+$('location-list').addEventListener('click', event => {
+  const button = event.target.closest('[data-edit-location]'); if (!button || busy) return;
+  const location = room.locations.find(l => l.id === button.dataset.editLocation); if (!location) return;
+  resetLocationForm(); editingLocation = location.id;
+  for (const [id, field] of [['author','author'],['location-name','name'],['address','address'],['note','note']]) $(id).value = location[field] || '';
+  $('location-form-title').textContent = '촬영 장소 수정'; $('save-location').textContent = '수정 내용 저장'; $('cancel-location').hidden = false;
+  $('photo-preview').src = location.photo || ''; $('photo-preview').hidden = !location.photo; $('remove-photo').hidden = !location.photo;
+  $('location-form-title').scrollIntoView({behavior:'smooth',block:'center'}); $('location-name').focus({preventScroll:true});
+});
 $('location-form').addEventListener('submit', async event => {
   event.preventDefault(); event.submitter.disabled = true;
-  try { if (await mutate({ action:'location', author:$('author').value, name:$('location-name').value, address:$('address').value, note:$('note').value, photo:await readPhoto($('photo').files[0]) })) { $('location-form').reset(); $('photo-preview').hidden = true; } } catch(error) { message(error.message, true); } finally { event.submitter.disabled = false; }
+  try {
+    const input = {action:editingLocation ? 'updateLocation' : 'location', id:editingLocation, author:$('author').value, name:$('location-name').value, address:$('address').value, note:$('note').value};
+    const file = $('photo').files[0];
+    if (file) input.photo = await readPhoto(file);
+    else if (removePhoto || !editingLocation) input.photo = '';
+    if (await mutate(input)) resetLocationForm();
+  } catch(error) { message(error.message, true); } finally { event.submitter.disabled = false; }
 });
 function renderLocations() {
   $('location-count').textContent = `${room.locations.length} LOCATIONS`;
-  $('location-list').innerHTML = room.locations.length ? room.locations.map(l => `<article class="location-card"><div class="info"><div class="eyebrow">SCOUTED BY ${escape(l.author)}</div><h3>${escape(l.name)}</h3><p>${escape(l.address)}</p>${l.note ? `<p>${escape(l.note)}</p>` : ''}<button class="delete" data-action="deleteLocation" data-id="${l.id}">장소 삭제</button></div><div class="map-links"><a href="https://map.naver.com/p/search/${encodeURIComponent(l.address + ' ' + l.name)}" target="_blank" rel="noopener noreferrer">네이버 지도 ↗</a><a href="https://map.kakao.com/link/search/${encodeURIComponent(l.address + ' ' + l.name)}" target="_blank" rel="noopener noreferrer">카카오맵 ↗</a></div>${l.photo ? `<img src="${escape(l.photo)}" alt="${escape(l.name)} 장소 사진" loading="lazy">` : '<div class="no-photo">첨부된 사진이 없어요</div>'}</article>`).join('') : '<div class="empty"><strong>첫 번째 장소를 기다리고 있어요.</strong>좋은 장면이 떠오르는 장소를 등록해 보세요.<br>지도와 사진을 팀원들과 함께 볼 수 있습니다.</div>';
+  $('location-list').innerHTML = room.locations.length ? room.locations.map(l => `<article class="location-card"><div class="info"><div class="eyebrow">SCOUTED BY ${escape(l.author)}</div><h3>${escape(l.name)}</h3><p>${escape(l.address)}</p>${l.note ? `<p>${escape(l.note)}</p>` : ''}<button type="button" class="secondary" data-edit-location="${l.id}">수정</button> <button class="delete" data-action="deleteLocation" data-id="${l.id}">장소 삭제</button></div><div class="map-links"><a href="https://map.naver.com/p/search/${encodeURIComponent(l.address + ' ' + l.name)}" target="_blank" rel="noopener noreferrer">네이버 지도 ↗</a><a href="https://map.kakao.com/link/search/${encodeURIComponent(l.address + ' ' + l.name)}" target="_blank" rel="noopener noreferrer">카카오맵 ↗</a></div>${l.photo ? `<img src="${escape(l.photo)}" alt="${escape(l.name)} 장소 사진" loading="lazy">` : '<div class="no-photo">첨부된 사진이 없어요</div>'}</article>`).join('') : '<div class="empty"><strong>첫 번째 장소를 기다리고 있어요.</strong>좋은 장면이 떠오르는 장소를 등록해 보세요.<br>지도와 사진을 팀원들과 함께 볼 수 있습니다.</div>';
 }
 async function sync() {
   if (!code || needsServer || busy || loading || document.hidden) return;
