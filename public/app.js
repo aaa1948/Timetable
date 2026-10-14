@@ -1,10 +1,18 @@
 import { days, time, conflicts, availableRanges } from './schedule.js';
+import { API_BASE, SUPABASE_URL, SUPABASE_KEY } from './config.js';
+import { createCloudClient } from './cloud.js';
 const $ = id => document.getElementById(id);
 const escape = value => String(value).replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
 let code = new URLSearchParams(location.hash.slice(1)).get('room') || '', room, busy = false, loading = false, selectedSlot;
+const apiBase = API_BASE.replace(/\/$/, '');
+const cloud = SUPABASE_URL && SUPABASE_KEY ? createCloudClient(SUPABASE_URL, SUPABASE_KEY) : null;
+const needsServer = location.hostname.endsWith('.github.io') && !apiBase && !cloud;
 function message(text, error = false) { $('message').textContent = text; $('message').className = error ? 'error' : ''; $('message').hidden = false; clearTimeout(message.timer); message.timer = setTimeout(() => $('message').hidden = true, error ? 9000 : 3500); }
 async function request(path, data) {
-  const response = await fetch(path, data ? { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(data) } : { cache: 'no-store' });
+  if (cloud) return cloud(path, data);
+  if (needsServer) throw new Error('팀 공유 서버가 아직 연결되지 않았습니다. 관리자에게 서버 연결을 요청해 주세요.');
+  const response = await fetch(apiBase + path, data ? { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(data) } : { cache: 'no-store' });
+  if (!response.headers.get('content-type')?.includes('application/json')) throw new Error('저장 서버에 연결할 수 없습니다. 서버 주소와 배포 상태를 확인해 주세요.');
   const result = await response.json(); if (!response.ok) throw new Error(result.error || '서버에 연결할 수 없습니다.'); return result;
 }
 async function mutate(data) {
@@ -21,10 +29,10 @@ function drawNames() {
   $('name-inputs').innerHTML = Array.from({length: count}, (_, i) => `<label for="name-${i}">팀원 ${i + 1}</label><input id="name-${i}" maxlength="30" placeholder="이름" required value="${escape(old[i] || '')}">`).join('');
 }
 $('people-count').addEventListener('input', drawNames); drawNames();
-const options = (from, to) => Array.from({ length: to - from + 1 }, (_, i) => `<option value="${i + from}">${time(i + from)}</option>`).join('');
+const options = (from, to) => Array.from({ length: (to - from) / 2 + 1 }, (_, i) => `<option value="${i * 2 + from}">${time(i * 2 + from)}</option>`).join('');
 $('day').innerHTML = days.map((day, i) => `<option value="${i}">${day}요일</option>`).join('');
-$('start').innerHTML = options(0, 47); $('end').innerHTML = options(1, 48); $('start').value = 18; $('end').value = 20;
-$('start').addEventListener('change', () => { if (+$('end').value <= +$('start').value) $('end').value = +$('start').value + 1; });
+$('start').innerHTML = options(0, 46); $('end').innerHTML = options(2, 48); $('start').value = 18; $('end').value = 20;
+$('start').addEventListener('change', () => { if (+$('end').value <= +$('start').value) $('end').value = +$('start').value + 2; });
 $('create-form').addEventListener('submit', async event => {
   event.preventDefault(); const button = event.submitter; button.disabled = true;
   try { const result = await request('/api/rooms', { name: $('project-name').value }); code = result.code; room = result.room; history.replaceState(null, '', `#room=${code}`); render(); } catch (error) { message(error.message, true); } finally { button.disabled = false; }
@@ -54,7 +62,7 @@ function renderSchedule() {
   const pending = room.members.filter(m => !m.confirmed);
   $('pending').textContent = !room.members.length ? '팀원을 등록한 뒤 일정을 입력해 주세요.' : pending.length ? `확인 전: ${pending.map(m => m.name).join(', ')} · 빈칸은 아직 모두 가능한 시간으로 확정되지 않았어요.` : '모든 팀원이 입력을 완료했어요. 겹치는 일정이 없는 시간이 초록색으로 표시됩니다.';
   let html = '<thead><tr><th scope="col">KST</th>' + days.map(d => `<th scope="col">${d}</th>`).join('') + '</tr></thead><tbody>';
-  for (let slot = 0; slot < 48; slot++) {
+  for (let slot = 0; slot < 48; slot += 2) {
     html += `<tr><td>${time(slot)}</td>`;
     for (let day = 0; day < 7; day++) {
       const blocks = conflicts(room.blocks, day, slot, filter), names = [...new Set(blocks.map(b => nameOf(b.memberId)))];
@@ -72,7 +80,7 @@ function renderSchedule() {
 }
 function showSlot(day, slot) {
   selectedSlot = [day, slot]; const blocks = conflicts(room.blocks, day, slot, $('view').value);
-  $('slot-detail').innerHTML = `<strong>${days[day]}요일 ${time(slot)}–${time(slot+1)}</strong><br>` + (blocks.length ? blocks.map(b => `${escape(nameOf(b.memberId))} · ${escape(b.reason)}`).join('<br>') : '등록된 불가능한 일정이 없습니다. 입력 완료 여부도 확인해 주세요.');
+  $('slot-detail').innerHTML = `<strong>${days[day]}요일 ${time(slot)}–${time(slot+2)}</strong><br>` + (blocks.length ? blocks.map(b => `${escape(nameOf(b.memberId))} · ${escape(b.reason)}`).join('<br>') : '등록된 불가능한 일정이 없습니다. 입력 완료 여부도 확인해 주세요.');
 }
 $('timetable').addEventListener('click', event => { const button = event.target.closest('[data-slot]'); if (button) showSlot(+button.dataset.day, +button.dataset.slot); });
 document.addEventListener('click', event => { const button = event.target.closest('[data-action]'); if (!button) return; const warning = button.dataset.action === 'deleteMember' ? '이 팀원과 해당 팀원의 모든 일정을 삭제할까요?' : '이 항목을 삭제할까요?'; if (confirm(warning)) mutate({ action:button.dataset.action, id:button.dataset.id }); });
@@ -91,7 +99,7 @@ function renderLocations() {
   $('location-list').innerHTML = room.locations.length ? room.locations.map(l => `<article class="location-card"><div class="info"><div class="eyebrow">SCOUTED BY ${escape(l.author)}</div><h3>${escape(l.name)}</h3><p>${escape(l.address)}</p>${l.note ? `<p>${escape(l.note)}</p>` : ''}<button class="delete" data-action="deleteLocation" data-id="${l.id}">장소 삭제</button></div><div class="map-links"><a href="https://map.naver.com/p/search/${encodeURIComponent(l.address + ' ' + l.name)}" target="_blank" rel="noopener noreferrer">네이버 지도 ↗</a><a href="https://map.kakao.com/link/search/${encodeURIComponent(l.address + ' ' + l.name)}" target="_blank" rel="noopener noreferrer">카카오맵 ↗</a></div>${l.photo ? `<img src="${escape(l.photo)}" alt="${escape(l.name)} 장소 사진" loading="lazy">` : '<div class="no-photo">첨부된 사진이 없어요</div>'}</article>`).join('') : '<div class="empty"><strong>첫 번째 장소를 기다리고 있어요.</strong>좋은 장면이 떠오르는 장소를 등록해 보세요.<br>지도와 사진을 팀원들과 함께 볼 수 있습니다.</div>';
 }
 async function sync() {
-  if (!code || busy || loading || document.hidden) return;
+  if (!code || needsServer || busy || loading || document.hidden) return;
   loading = true;
   try { const next = await request(`/api/rooms/${code}`); if (!busy && (!room || next.updatedAt > room.updatedAt)) { room = next; render(); } $('sync').textContent = '● 연결됨 · 5초마다 자동 동기화'; }
   catch(error) { $('sync').textContent = '연결 끊김 · 다시 연결하는 중'; if (!room) { $('welcome').hidden = false; message(error.message, true); } }
@@ -99,4 +107,8 @@ async function sync() {
 }
 window.addEventListener('hashchange', () => location.reload());
 document.addEventListener('visibilitychange', () => { if (!document.hidden) sync(); });
+if (needsServer) {
+  $('server-notice').hidden = false;
+  $('create-form').querySelector('button').disabled = true;
+}
 if (code) sync(); setInterval(sync, 5000);

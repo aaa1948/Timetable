@@ -30,7 +30,8 @@ test('공유 저장, 동시 입력, 검증, 사진 및 서버 재시작 후 복�
   assert.equal((await api(path,{action:'members',names:['민지']})).status,400);
   assert.equal((await api(path,{action:'block',memberId:a.id,day:0,start:20,end:18,reason:'잘못된 시간'})).status,400);
   assert.equal((await api(path,{action:'block',memberId:'missing',day:0,start:18,end:20,reason:'수업'})).status,400);
-  await Promise.all([api(path,{action:'block',memberId:a.id,day:0,start:18,end:20,reason:'수업'}), api(path,{action:'block',memberId:b.id,day:0,start:19,end:22,reason:'아르바이트'})]);
+  assert.equal((await api(path,{action:'block',memberId:a.id,day:0,start:19,end:22,reason:'30분 시작'})).status,400);
+  await Promise.all([api(path,{action:'block',memberId:a.id,day:0,start:18,end:20,reason:'수업'}), api(path,{action:'block',memberId:b.id,day:0,start:20,end:22,reason:'아르바이트'})]);
   result = await api(path); assert.equal(result.data.blocks.length,2);
   await api(path,{action:'confirm',memberId:a.id,confirmed:true});
   const photo = 'data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwMCAO+a9d8AAAAASUVORK5CYII=';
@@ -42,5 +43,7 @@ test('공유 저장, 동시 입력, 검증, 사진 및 서버 재시작 후 복�
   await api(path,{action:'deleteLocation',id:result.data.locations[0].id}); assert.equal((await api(path)).data.locations.length,0);
   assert.equal((await api('/api/rooms/' + '0'.repeat(32))).status,404);
   const cross = await fetch(base + path,{method:'POST',headers:{'Content-Type':'application/json','Origin':'https://other.example'},body:JSON.stringify({action:'members',names:['침입']})}); assert.equal(cross.status,403);
+  const preflight = await fetch(base + path,{method:'OPTIONS',headers:{Origin:'https://aaa1948.github.io','Access-Control-Request-Method':'POST'}});
+  assert.equal(preflight.status,204); assert.equal(preflight.headers.get('access-control-allow-origin'),'https://aaa1948.github.io');
   assert.equal((await fetch(base + '/')).status,200);
 });
