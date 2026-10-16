@@ -36,11 +36,23 @@ export function applyAction(room, input) {
             let photo = input.photo === undefined ? (existing?.photo || '') : input.photo;
             if (typeof photo !== 'string' || (photo && (!/^data:image\/(jpeg|png|webp);base64,[A-Za-z0-9+/=]+$/.test(photo) || photo.length > 2_800_000))) fail('2MB 이하의 JPG, PNG, WebP 사진을 사용해 주세요.');
             const location = { id: existing?.id || crypto.randomUUID(), author: str(input.author, 30), name: str(input.name), address: str(input.address, 200), note: typeof input.note === 'string' ? input.note.trim().slice(0, 400) : '', photo };
+            location.kind = input.kind === undefined ? (existing?.kind || 'filming') : input.kind;
+            if (!['filming','school'].includes(location.kind)) fail('장소 종류를 확인해 주세요.');
+            const point = input.point === undefined ? (existing?.point || null) : input.point;
+            if (point !== null && (!Number.isFinite(point?.lat) || !Number.isFinite(point?.lng) || Math.abs(point.lat) > 90 || Math.abs(point.lng) > 180)) fail('올바른 지도 위치를 지정해 주세요.');
+            location.point = point ? {lat:point.lat,lng:point.lng} : null;
             if (existing) room.locations[room.locations.indexOf(existing)] = location;
             else room.locations.push(location);
             break;
           }
           case 'deleteLocation': room.locations = room.locations.filter(l => l.id !== input.id); break;
+          case 'locationPoint': {
+            const location = room.locations.find(l => l.id === input.id);
+            if (!location) fail('이 장소가 삭제되었습니다.');
+            const p = input.point;
+            if (!Number.isFinite(p?.lat) || !Number.isFinite(p?.lng) || Math.abs(p.lat)>90 || Math.abs(p.lng)>180) fail('올바른 지도 위치를 지정해 주세요.');
+            location.point = {lat:p.lat,lng:p.lng}; break;
+          }
           default: fail('알 수 없는 작업입니다.');
         }
 return room;

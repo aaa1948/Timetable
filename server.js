@@ -32,8 +32,8 @@ const send = (res, status, value) => { res.writeHead(status, { 'Content-Type': '
 export function createServer() {
   return http.createServer(async (req, res) => {
     res.setHeader('X-Content-Type-Options', 'nosniff');
-    res.setHeader('Referrer-Policy', 'no-referrer');
-    res.setHeader('Content-Security-Policy', "default-src 'self'; img-src 'self' data:; style-src 'self'; script-src 'self'; connect-src 'self' https://*.supabase.co; frame-ancestors 'none'; base-uri 'none'; form-action 'self'");
+    res.setHeader('Referrer-Policy', 'strict-origin-when-cross-origin');
+    res.setHeader('Content-Security-Policy', "default-src 'self'; img-src 'self' data: https://tile.openstreetmap.org https://unpkg.com; style-src 'self' https://unpkg.com; script-src 'self' https://unpkg.com; connect-src 'self' https://*.supabase.co; frame-ancestors 'none'; base-uri 'none'; form-action 'self'");
     try {
       const url = new URL(req.url, 'http://localhost');
       if (url.pathname.startsWith('/api/')) {
@@ -66,7 +66,7 @@ export function createServer() {
         applyAction(room, input);
         room.updatedAt = Math.max(Date.now(), room.updatedAt + 1); save(code, room); return send(res, 200, room);
       }
-      const files = { '/cloud.js': ['cloud.js', 'text/javascript'], '/room.js': ['room.js', 'text/javascript'], '/': ['index.html', 'text/html'], '/config.js': ['config.js', 'text/javascript'], '/app.js': ['app.js', 'text/javascript'], '/schedule.js': ['schedule.js', 'text/javascript'], '/style.css': ['style.css', 'text/css'] };
+      const files = { '/map.js': ['map.js','text/javascript'], '/cloud.js': ['cloud.js', 'text/javascript'], '/room.js': ['room.js', 'text/javascript'], '/': ['index.html', 'text/html'], '/config.js': ['config.js', 'text/javascript'], '/app.js': ['app.js', 'text/javascript'], '/schedule.js': ['schedule.js', 'text/javascript'], '/style.css': ['style.css', 'text/css'] };
       const file = files[url.pathname];
       if (!file || req.method !== 'GET') fail('주소를 찾을 수 없습니다.', 404);
       res.writeHead(200, { 'Content-Type': file[1] + '; charset=utf-8' }); res.end(readFileSync(resolve(root, 'public', file[0])));

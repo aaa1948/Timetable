@@ -1,3 +1,4 @@
+import {setupMap,updateMap,showMap,pickLocation,cancelPick,validPoint} from './map.js';
 import { days, time, conflicts, availableRanges, selectedRanges } from './schedule.js';
 import { API_BASE, SUPABASE_URL, SUPABASE_KEY } from './config.js';
 import { createCloudClient } from './cloud.js';
@@ -5,7 +6,10 @@ const $ = id => document.getElementById(id);
 const escape = value => String(value).replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
 let code = new URLSearchParams(location.hash.slice(1)).get('room') || '', room, busy = false, loading = false, selectedSlot;
 const chosenSlots = new Set();
-let editingLocation = null, removePhoto = false;
+let editingLocation = null, removePhoto = false, formPoint = null;
+setupMap((id,point)=>mutate({action:"locationPoint",id,point}),point=>{formPoint=point; $("form-point-status").textContent="지도 위치 지정 완료"; $("location-form-title").scrollIntoView({behavior:"smooth",block:"center"});});
+$("pick-form-point").addEventListener("click",()=>pickLocation({id:"form",name:$("location-name").value || "새 장소",point:formPoint}));
+$("address").addEventListener("input",()=>{formPoint=null;cancelPick();$("form-point-status").textContent="주소가 변경되었습니다. 지도 위치를 다시 지정해 주세요.";});
 const apiBase = API_BASE.replace(/\/$/, '');
 const cloud = SUPABASE_URL && SUPABASE_KEY ? createCloudClient(SUPABASE_URL, SUPABASE_KEY) : null;
 const needsServer = location.hostname.endsWith('.github.io') && !apiBase && !cloud;
@@ -42,6 +46,7 @@ $('create-form').addEventListener('submit', async event => {
 $('invite').addEventListener('click', async () => { try { await navigator.clipboard.writeText(location.href); message('초대 링크를 복사했습니다. 링크를 가진 팀원은 조회·수정할 수 있어요.'); } catch { window.prompt('이 링크를 복사해 팀원에게 전달하세요.', location.href); } });
 for (const page of ['schedule', 'locations']) $('tab-' + page).addEventListener('click', () => {
   for (const target of ['schedule', 'locations']) { $(target + '-page').hidden = target !== page; $('tab-' + target).classList.toggle('active', target === page); $('tab-' + target).setAttribute('aria-selected', String(target === page)); }
+  if(page === 'locations') requestAnimationFrame(showMap);
 });
 $('members-form').addEventListener('submit', async event => { event.preventDefault(); if (await mutate({action:'members', names:[...$('name-inputs').querySelectorAll('input')].map(i => i.value)})) $('name-inputs').querySelectorAll('input').forEach(i => i.value = ''); });
 $('block-form').addEventListener('submit', async event => {
@@ -124,7 +129,7 @@ async function readPhoto(file) {
 }
 $('photo').addEventListener('change', async () => { try { const data = await readPhoto($('photo').files[0]); const existing = !removePhoto && room.locations.find(l => l.id === editingLocation)?.photo; $('photo-preview').src = data || existing || ''; $('photo-preview').hidden = !(data || existing); $('remove-photo').hidden = $('photo-preview').hidden; } catch(error) { $('photo').value = ''; message(error.message, true); } });
 function resetLocationForm() {
-  editingLocation = null; removePhoto = false; $('location-form').reset();
+  editingLocation = null; removePhoto = false; formPoint=null; cancelPick(); $('location-form').reset(); $('form-point-status').textContent='위치를 지정하면 아래 지도에 함께 표시됩니다.';
   $('photo-preview').hidden = true; $('remove-photo').hidden = true; $('cancel-location').hidden = true;
   $('location-form-title').textContent = '촬영 장소 추가'; $('save-location').textContent = '장소 저장 ↗';
 }
@@ -133,7 +138,7 @@ $('remove-photo').addEventListener('click', () => { removePhoto = true; $('photo
 $('location-list').addEventListener('click', event => {
   const button = event.target.closest('[data-edit-location]'); if (!button || busy) return;
   const location = room.locations.find(l => l.id === button.dataset.editLocation); if (!location) return;
-  resetLocationForm(); editingLocation = location.id;
+  resetLocationForm(); editingLocation = location.id; formPoint=validPoint(location.point)?location.point:null; $('location-kind').value=location.kind==='school'?'school':'filming'; $('form-point-status').textContent=formPoint?'지도 위치 지정 완료':'지도 위치를 지정해 주세요.';
   for (const [id, field] of [['author','author'],['location-name','name'],['address','address'],['note','note']]) $(id).value = location[field] || '';
   $('location-form-title').textContent = '촬영 장소 수정'; $('save-location').textContent = '수정 내용 저장'; $('cancel-location').hidden = false;
   $('photo-preview').src = location.photo || ''; $('photo-preview').hidden = !location.photo; $('remove-photo').hidden = !location.photo;
@@ -142,7 +147,7 @@ $('location-list').addEventListener('click', event => {
 $('location-form').addEventListener('submit', async event => {
   event.preventDefault(); event.submitter.disabled = true;
   try {
-    const input = {action:editingLocation ? 'updateLocation' : 'location', id:editingLocation, author:$('author').value, name:$('location-name').value, address:$('address').value, note:$('note').value};
+    const input = {action:editingLocation ? 'updateLocation' : 'location', id:editingLocation, author:$('author').value, name:$('location-name').value, address:$('address').value, note:$('note').value, kind:$('location-kind').value, point:formPoint};
     const file = $('photo').files[0];
     if (file) input.photo = await readPhoto(file);
     else if (removePhoto || !editingLocation) input.photo = '';
@@ -150,8 +155,9 @@ $('location-form').addEventListener('submit', async event => {
   } catch(error) { message(error.message, true); } finally { event.submitter.disabled = false; }
 });
 function renderLocations() {
+  updateMap(room.locations);
   $('location-count').textContent = `${room.locations.length} LOCATIONS`;
-  $('location-list').innerHTML = room.locations.length ? room.locations.map(l => `<article class="location-card"><div class="info"><div class="location-card-top"><div class="eyebrow">SCOUTED BY ${escape(l.author)}</div><div class="location-actions"><button type="button" class="delete" data-edit-location="${l.id}">수정</button><button type="button" class="delete" data-action="deleteLocation" data-id="${l.id}">장소 삭제</button></div></div><h3>${escape(l.name)}</h3><p>${escape(l.address)}</p>${l.note ? `<p>${escape(l.note)}</p>` : ''}<div class="map-links"><a href="https://map.naver.com/p/search/${encodeURIComponent(l.address + ' ' + l.name)}" target="_blank" rel="noopener noreferrer">네이버 지도 ↗</a><a href="https://map.kakao.com/link/search/${encodeURIComponent(l.address + ' ' + l.name)}" target="_blank" rel="noopener noreferrer">카카오맵 ↗</a></div></div>${l.photo ? `<img src="${escape(l.photo)}" alt="${escape(l.name)} 장소 사진" loading="lazy">` : '<div class="no-photo">첨부된 사진이 없어요</div>'}</article>`).join('') : '<div class="empty"><strong>첫 번째 장소를 기다리고 있어요.</strong>좋은 장면이 떠오르는 장소를 등록해 보세요.<br>지도와 사진을 팀원들과 함께 볼 수 있습니다.</div>';
+  $('location-list').innerHTML = room.locations.length ? room.locations.map(l => `<article class="location-card"><div class="info"><div class="location-card-top"><div class="eyebrow">SCOUTED BY ${escape(l.author)}</div><div class="location-actions"><button type="button" class="delete" data-edit-location="${l.id}">수정</button><button type="button" class="delete" data-action="deleteLocation" data-id="${l.id}">장소 삭제</button></div></div><h3>${l.kind === "school" ? "학교 · " : ""}${escape(l.name)}</h3><p>${escape(l.address)}</p>${l.note ? `<p>${escape(l.note)}</p>` : ''}<div class="map-links"><a href="https://map.naver.com/p/search/${encodeURIComponent(l.address + ' ' + l.name)}" target="_blank" rel="noopener noreferrer">네이버 지도 ↗</a><a href="https://map.kakao.com/link/search/${encodeURIComponent(l.address + ' ' + l.name)}" target="_blank" rel="noopener noreferrer">카카오맵 ↗</a></div></div>${l.photo ? `<img src="${escape(l.photo)}" alt="${escape(l.name)} 장소 사진" loading="lazy">` : '<div class="no-photo">첨부된 사진이 없어요</div>'}</article>`).join('') : '<div class="empty"><strong>첫 번째 장소를 기다리고 있어요.</strong>좋은 장면이 떠오르는 장소를 등록해 보세요.<br>지도와 사진을 팀원들과 함께 볼 수 있습니다.</div>';
 }
 async function sync() {
   if (!code || needsServer || busy || loading || document.hidden) return;

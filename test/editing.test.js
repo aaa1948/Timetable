@@ -3,6 +3,19 @@ import assert from 'node:assert/strict';
 import { applyAction } from '../public/room.js';
 import { selectedRanges } from '../public/schedule.js';
 const initial = () => ({members:[{id:'person',name:'팀원'}],blocks:[],locations:[]});
+test('학교와 좌표를 보존하고 기존 장소에도 위치를 추가하며 잘못된 좌표는 거부', () => {
+  const room=initial();
+  const fields={author:'팀원',name:'학교',address:'서울',note:''};
+  applyAction(room,{action:'location',...fields,kind:'school',point:{lat:37.5,lng:127}});
+  const id=room.locations[0].id;
+  applyAction(room,{action:'updateLocation',...fields,id,name:'학교 이름 수정'});
+  assert.equal(room.locations[0].kind,'school'); assert.deepEqual(room.locations[0].point,{lat:37.5,lng:127});
+  applyAction(room,{action:'locationPoint',id,point:{lat:35,lng:129}});
+  assert.deepEqual(room.locations[0].point,{lat:35,lng:129});
+  assert.throws(()=>applyAction(room,{action:'locationPoint',id,point:{lat:999,lng:0}}));
+  assert.throws(()=>applyAction(room,{action:'locationPoint',id:'missing',point:{lat:35,lng:129}}));
+  applyAction(room,{action:'updateLocation',...fields,id,point:null}); assert.equal(room.locations[0].point,null);
+});
 test('여러 요일의 비연속 선택을 연속 구간으로 묶고 자정 경계를 유지', () => {
   assert.deepEqual(selectedRanges(new Set(['0:18','0:20','0:26','6:46'])), [
     {day:0,start:18,end:22},{day:0,start:26,end:28},{day:6,start:46,end:48}
