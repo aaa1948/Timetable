@@ -1,7 +1,7 @@
-import {setupMap,updateMap,showMap,pickLocation,cancelPick,validPoint} from './map.js';
+import {setupMap,updateMap,showMap,pickLocation,cancelPick,validPoint} from './map.js?v=map-1';
 import { days, time, conflicts, availableRanges, selectedRanges } from './schedule.js';
 import { API_BASE, SUPABASE_URL, SUPABASE_KEY } from './config.js';
-import { createCloudClient } from './cloud.js';
+import { createCloudClient } from './cloud.js?v=map-1';
 const $ = id => document.getElementById(id);
 const escape = value => String(value).replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
 let code = new URLSearchParams(location.hash.slice(1)).get('room') || '', room, busy = false, loading = false, selectedSlot;

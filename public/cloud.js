@@ -1,4 +1,4 @@
-import { applyAction } from './room.js';
+import { applyAction } from './room.js?v=map-1';
 export function createCloudClient(url, key, fetcher = fetch) {
   if (!/^https:\/\/[^/]+\/?$/.test(url) || !key || key.startsWith('sb_secret_')) throw new Error('Supabase 프로젝트 URL과 공개 키를 확인해 주세요.');
   const headers = { 'Content-Type':'application/json', apikey:key };
