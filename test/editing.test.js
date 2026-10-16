@@ -44,3 +44,13 @@ test('장소 수정은 ID와 사진을 유지하고 교체·제거를 지원하�
   applyAction(room,{action:'deleteLocation',id});
   assert.throws(()=>applyAction(room,{action:'updateLocation',...fields,id})); assert.equal(room.locations.length,0);
 });
+
+ test('마커 색상은 선택 사항이며 수정 시 보존, 초기화 및 유효성 검증',()=>{
+  const room=initial(), fields={author:'팀원',name:'장소',address:'서울'};
+  applyAction(room,{action:'location',...fields,markerColor:'#db705b'});
+  const id=room.locations[0].id;
+  applyAction(room,{action:'updateLocation',id,...fields});assert.equal(room.locations[0].markerColor,'#db705b');
+  assert.throws(()=>applyAction(room,{action:'updateLocation',id,...fields,markerColor:'red;url(x)'}));
+  assert.equal(room.locations[0].markerColor,'#db705b');
+  applyAction(room,{action:'updateLocation',id,...fields,markerColor:''});assert.equal(room.locations[0].markerColor,'');
+ });

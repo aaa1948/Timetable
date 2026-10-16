@@ -1,14 +1,14 @@
-import {setupMap,updateMap,showMap,pickLocation,cancelPick,validPoint} from './map.js?v=map-1';
+import {setupMap,updateMap,showMap,pickLocation,cancelPick,validPoint} from './map.js?v=map-2';
 import { days, time, conflicts, availableRanges, selectedRanges } from './schedule.js';
-import { API_BASE, SUPABASE_URL, SUPABASE_KEY } from './config.js';
-import { createCloudClient } from './cloud.js?v=map-1';
+import { API_BASE, SUPABASE_URL, SUPABASE_KEY } from './config.js?v=map-2';
+import { createCloudClient } from './cloud.js?v=map-2';
 const $ = id => document.getElementById(id);
 const escape = value => String(value).replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
 let code = new URLSearchParams(location.hash.slice(1)).get('room') || '', room, busy = false, loading = false, selectedSlot;
 const chosenSlots = new Set();
 let editingLocation = null, removePhoto = false, formPoint = null;
 setupMap((id,point)=>mutate({action:"locationPoint",id,point}),point=>{formPoint=point; $("form-point-status").textContent="지도 위치 지정 완료"; $("location-form-title").scrollIntoView({behavior:"smooth",block:"center"});});
-$("pick-form-point").addEventListener("click",()=>pickLocation({id:"form",name:$("location-name").value || "새 장소",point:formPoint}));
+$("pick-form-point").addEventListener("click",()=>pickLocation({id:"form",name:$("location-name").value || "새 장소",address:$("address").value,point:formPoint}));
 $("address").addEventListener("input",()=>{formPoint=null;cancelPick();$("form-point-status").textContent="주소가 변경되었습니다. 지도 위치를 다시 지정해 주세요.";});
 const apiBase = API_BASE.replace(/\/$/, '');
 const cloud = SUPABASE_URL && SUPABASE_KEY ? createCloudClient(SUPABASE_URL, SUPABASE_KEY) : null;
@@ -138,7 +138,7 @@ $('remove-photo').addEventListener('click', () => { removePhoto = true; $('photo
 $('location-list').addEventListener('click', event => {
   const button = event.target.closest('[data-edit-location]'); if (!button || busy) return;
   const location = room.locations.find(l => l.id === button.dataset.editLocation); if (!location) return;
-  resetLocationForm(); editingLocation = location.id; formPoint=validPoint(location.point)?location.point:null; $('location-kind').value=location.kind==='school'?'school':'filming'; $('form-point-status').textContent=formPoint?'지도 위치 지정 완료':'지도 위치를 지정해 주세요.';
+  resetLocationForm(); editingLocation = location.id; formPoint=validPoint(location.point)?location.point:null; $('marker-color').value=location.markerColor || ''; $('location-kind').value=location.kind==='school'?'school':'filming'; $('form-point-status').textContent=formPoint?'지도 위치 지정 완료':'지도 위치를 지정해 주세요.';
   for (const [id, field] of [['author','author'],['location-name','name'],['address','address'],['note','note']]) $(id).value = location[field] || '';
   $('location-form-title').textContent = '촬영 장소 수정'; $('save-location').textContent = '수정 내용 저장'; $('cancel-location').hidden = false;
   $('photo-preview').src = location.photo || ''; $('photo-preview').hidden = !location.photo; $('remove-photo').hidden = !location.photo;
@@ -147,7 +147,7 @@ $('location-list').addEventListener('click', event => {
 $('location-form').addEventListener('submit', async event => {
   event.preventDefault(); event.submitter.disabled = true;
   try {
-    const input = {action:editingLocation ? 'updateLocation' : 'location', id:editingLocation, author:$('author').value, name:$('location-name').value, address:$('address').value, note:$('note').value, kind:$('location-kind').value, point:formPoint};
+    const input = {action:editingLocation ? 'updateLocation' : 'location', id:editingLocation, author:$('author').value, name:$('location-name').value, address:$('address').value, note:$('note').value, kind:$('location-kind').value, markerColor:$('marker-color').value, point:formPoint};
     const file = $('photo').files[0];
     if (file) input.photo = await readPhoto(file);
     else if (removePhoto || !editingLocation) input.photo = '';

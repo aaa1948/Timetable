@@ -40,6 +40,8 @@ export function applyAction(room, input) {
             if (!['filming','school'].includes(location.kind)) fail('장소 종류를 확인해 주세요.');
             const point = input.point === undefined ? (existing?.point || null) : input.point;
             if (point !== null && (!Number.isFinite(point?.lat) || !Number.isFinite(point?.lng) || Math.abs(point.lat) > 90 || Math.abs(point.lng) > 180)) fail('올바른 지도 위치를 지정해 주세요.');
+            location.markerColor = input.markerColor === undefined ? (existing?.markerColor || '') : input.markerColor;
+            if (typeof location.markerColor !== 'string' || (location.markerColor && !/^#[0-9a-f]{6}$/i.test(location.markerColor))) fail('마커 색상을 확인해 주세요.');
             location.point = point ? {lat:point.lat,lng:point.lng} : null;
             if (existing) room.locations[room.locations.indexOf(existing)] = location;
             else room.locations.push(location);

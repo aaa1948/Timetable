@@ -5,3 +5,14 @@
 .location-card-top{display:flex;align-items:flex-start;justify-content:space-between;gap:12px;margin-bottom:18px}.location-card-top .eyebrow{min-width:0;margin:0;padding-top:4px;line-height:1.6}.location-actions{display:flex;align-items:center;gap:8px;flex-shrink:0}.location-actions button{font-size:11px;font-weight:650;line-height:1.5;padding:4px;border:0;border-radius:0;background:transparent;white-space:nowrap}.location-actions button:hover{text-decoration:underline}.location-card .map-links{padding:0;flex-wrap:wrap}
 
 #locations-map{height:480px;min-height:320px;border-radius:10px;z-index:0;background:#e9eee4;margin:16px 0}.map-pin{border:2px solid white;border-radius:50%;color:white;text-align:center;line-height:26px;font-weight:700;box-shadow:0 2px 6px #0004}.filming-pin{background:#174c3c}.school-pin{background:#b56a19}.draft-pin{background:#496aa4}.map-pick-actions,#unmapped-list{display:flex;gap:10px;flex-wrap:wrap;margin-top:14px}#unmapped-list button{font-size:12px;padding:8px}#map-pick-panel{padding:20px;background:#f5f7f2;border-radius:10px}.leaflet-popup-content button{padding:6px 10px;font-size:12px}.leaflet-control-attribution a{color:#174c3c}#map-section{scroll-margin-top:20px}@media(max-width:650px){#locations-map{height:360px}.map-pick-actions button{font-size:12px}}
+
+/* Optional place colors and always-visible place names. */
+.place-marker{background:none;border:0}
+.place-pin{position:relative;width:44px;height:56px;filter:drop-shadow(0 2px 3px #0005)}
+.place-pin-head{position:absolute;left:2px;top:0;width:40px;height:40px;border-radius:50% 50% 50% 0;transform:rotate(-45deg);background:var(--pin-color);border:3px solid white;color:transparent;box-sizing:border-box}
+.place-pin-head:after{content:'•';position:absolute;inset:0;display:grid;place-items:center;transform:rotate(45deg);color:white;font:bold 28px sans-serif}
+.place-pin-label{position:absolute;top:52px;left:50%;transform:translateX(-50%);width:max-content;max-width:190px;white-space:normal;text-align:center;font:700 13px/1.3 sans-serif;color:#fff;text-shadow:-1px -1px 0 #17211d,1px -1px 0 #17211d,-1px 1px 0 #17211d,1px 1px 0 #17211d,0 1px 4px #000}
+.map-search-row{display:flex;gap:8px}.map-search-row input{flex:1;min-width:0}.map-search-row button{flex-shrink:0}
+#map-search-results{display:grid;gap:6px;max-height:260px;overflow:auto;margin:12px 0}
+.map-search-result{display:grid;text-align:left;gap:4px;background:#f3f7f4;color:#174c3c;border:1px solid #d6e2da;padding:12px}
+.map-search-result span{font-size:12px;font-weight:400}.map-search-result[aria-pressed=true]{background:#d5eadf;border-color:#248565}
